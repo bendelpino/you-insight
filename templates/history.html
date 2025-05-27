@@ -1,0 +1,253 @@
+{% extends 'base.html' %}
+
+{% block title %}Analysis History - YouInsight{% endblock %}
+{% block body_class %}history-page{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h3 class="mb-0">Analysis History</h3>
+        <a href="{{ url_for('main.chat') }}" class="btn btn-primary">
+            <i class="fas fa-plus me-2"></i>New Analysis
+        </a>
+    </div>
+    <div class="card-body">
+        {% if analyses %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Search Term</th>
+                        <th>Type</th>
+                        <th>Content</th>
+                        <th>Videos</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for analysis in analyses %}
+                    <tr>
+                        <td>{{ analysis.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td>
+                            {% if analysis.search_term %}
+                                {{ analysis.search_term }}
+                            {% else %}
+                                <span class="text-muted">Single Video</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if analysis.is_conversation %}
+                                <span class="badge bg-info">Conversation</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Single Query</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {{ analysis.prompt[:50] }}{% if analysis.prompt|length > 50 %}...{% endif %}
+                        </td>
+                        <td>{{ analysis.videos|length }}</td>
+                        <td>
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-sm btn-outline-primary view-analysis" data-id="{{ analysis.id }}" 
+                                        data-conversation="{{ analysis.is_conversation }}" data-conversation-id="{{ analysis.conversation_id }}">
+                                    <i class="fas fa-eye me-1"></i>View
+                                </button>
+                                {% if analysis.is_conversation and analysis.conversation_id %}
+                                <a href="{{ url_for('main.chat') }}?conversation_id={{ analysis.conversation_id }}" class="btn btn-sm btn-outline-success">
+                                    <i class="fas fa-comment me-1"></i>Continue
+                                </a>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-5">
+            <i class="fas fa-history fa-3x text-muted mb-3"></i>
+            <p class="lead">You haven't performed any analyses yet.</p>
+            <a href="{{ url_for('main.chat') }}" class="btn btn-primary">
+                <i class="fas fa-comment-dots me-2"></i>Start Chatting
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Analysis Modal -->
+<div class="modal fade" id="analysisModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Analysis Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="analysis-details">
+                    <div class="mb-3" id="conversation-info-container" style="display: none;">
+                        <h6>Conversation:</h6>
+                        <p id="conversation-info" class="border-bottom pb-2"></p>
+                    </div>
+                    <div class="mb-3">
+                        <h6>Prompt:</h6>
+                        <p id="analysis-prompt" class="border-bottom pb-2"></p>
+                    </div>
+                    <div class="mb-3">
+                        <h6>Search Term:</h6>
+                        <p id="analysis-search-term" class="border-bottom pb-2"></p>
+                    </div>
+                    <div class="mb-3">
+                        <h6>Videos:</h6>
+                        <div id="analysis-videos" class="border-bottom pb-2">
+                            <!-- Videos will be listed here -->
+                        </div>
+                    </div>
+                    <div id="conversation-container" style="display: none;">
+                        <h6>Conversation History:</h6>
+                        <div id="conversation-messages" class="mt-2 border rounded p-3">
+                            <!-- Conversation messages will be displayed here -->
+                        </div>
+                    </div>
+                    <div id="single-result-container">
+                        <h6>Results:</h6>
+                        <div id="analysis-result" class="mt-2"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const viewAnalysisButtons = document.querySelectorAll('.view-analysis');
+        const analysisModal = new bootstrap.Modal(document.getElementById('analysisModal'));
+        const analysisPrompt = document.getElementById('analysis-prompt');
+        const analysisSearchTerm = document.getElementById('analysis-search-term');
+        const analysisVideos = document.getElementById('analysis-videos');
+        const analysisResult = document.getElementById('analysis-result');
+        
+        viewAnalysisButtons.forEach(button => {
+            button.addEventListener('click', async function() {
+                const analysisId = this.dataset.id;
+                const isConversation = this.dataset.conversation === 'True';
+                const conversationId = this.dataset.conversationId;
+                
+                // Clear previous content
+                analysisPrompt.textContent = 'Loading...';
+                analysisSearchTerm.textContent = 'Loading...';
+                analysisVideos.innerHTML = '<p>Loading...</p>';
+                analysisResult.innerHTML = '<p>Loading...</p>';
+                
+                // Set up conversation UI
+                const conversationInfoContainer = document.getElementById('conversation-info-container');
+                const conversationInfo = document.getElementById('conversation-info');
+                const conversationContainer = document.getElementById('conversation-container');
+                const conversationMessages = document.getElementById('conversation-messages');
+                const singleResultContainer = document.getElementById('single-result-container');
+                
+                if (isConversation && conversationId) {
+                    conversationInfoContainer.style.display = 'block';
+                    conversationContainer.style.display = 'block';
+                    singleResultContainer.style.display = 'none';
+                    conversationInfo.textContent = `Conversation ID: ${conversationId}`;
+                    conversationMessages.innerHTML = '<p>Loading conversation...</p>';
+                } else {
+                    conversationInfoContainer.style.display = 'none';
+                    conversationContainer.style.display = 'none';
+                    singleResultContainer.style.display = 'block';
+                }
+                
+                analysisModal.show();
+                
+                try {
+                    const response = await fetch(`/api/analysis/${analysisId}`);
+                    const data = await response.json();
+                    
+                    // Display analysis details
+                    analysisPrompt.textContent = data.analysis.prompt;
+                    analysisSearchTerm.textContent = data.analysis.search_term || 'Single Video Analysis';
+                    
+                    // Display videos
+                    let videosHtml = '';
+                    if (data.analysis.videos && data.analysis.videos.length > 0) {
+                        videosHtml = '<ul class="list-group">';
+                        data.analysis.videos.forEach(video => {
+                            videosHtml += `
+                                <li class="list-group-item">
+                                    <a href="${video.url}" target="_blank">${video.title}</a>
+                                </li>
+                            `;
+                        });
+                        videosHtml += '</ul>';
+                    } else {
+                        videosHtml = '<p>No videos found</p>';
+                    }
+                    analysisVideos.innerHTML = videosHtml;
+                    
+                    // Handle conversation vs single analysis display
+                    if (data.analysis.is_conversation && data.analysis.messages) {
+                        let messagesHtml = '';
+                        try {
+                            const messages = data.analysis.messages;
+                            messagesHtml = '<div class="conversation-history">';
+                            messages.forEach(msg => {
+                                const roleClass = msg.role === 'user' ? 'history-user-message' : 'assistant-message';
+                                const roleIcon = msg.role === 'user' ? '<i class="fas fa-user"></i>' : '<i class="fas fa-robot"></i>';
+                                messagesHtml += `
+                                    <div class="message ${roleClass} mb-3">
+                                        <div class="message-header">
+                                            ${roleIcon} <strong>${msg.role === 'user' ? 'You' : 'Assistant'}</strong>
+                                            <small class="text-muted">${new Date(msg.timestamp).toLocaleString()}</small>
+                                        </div>
+                                        <div class="message-content mt-2">
+                                            ${marked.parse(msg.content)}
+                                        </div>
+                                    </div>
+                                `;
+                            });
+                            messagesHtml += '</div>';
+                            conversationMessages.innerHTML = messagesHtml;
+                            
+                            // Display also in single result container for backward compatibility
+                            if (data.analysis.result) {
+                                analysisResult.innerHTML = marked.parse(data.analysis.result);
+                            }
+                        } catch (error) {
+                            console.error('Error parsing conversation:', error);
+                            conversationMessages.textContent = 'Error displaying conversation';
+                        }
+                    } else {
+                        // Display result with markdown formatting for single analysis
+                        if (data.analysis.result) {
+                            try {
+                                analysisResult.innerHTML = marked.parse(data.analysis.result);
+                            } catch (error) {
+                                console.error('Error parsing markdown:', error);
+                                analysisResult.textContent = data.analysis.result;
+                            }
+                        } else {
+                            analysisResult.textContent = 'No results available';
+                        }
+                    }
+                    
+                } catch (error) {
+                    console.error('Error fetching analysis:', error);
+                    analysisPrompt.textContent = 'Error loading analysis';
+                    analysisSearchTerm.textContent = 'Error';
+                    analysisVideos.innerHTML = '<p>Error loading videos</p>';
+                    analysisResult.innerHTML = '<p>Error loading results</p>';
+                }
+            });
+        });
+    });
+</script>
+{% endblock %}

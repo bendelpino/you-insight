@@ -1,0 +1,24 @@
+Collecting eventlet
+  Downloading eventlet-0.39.1-py3-none-any.whl.metadata (5.5 kB)
+Collecting dnspython>=1.15.0 (from eventlet)
+  Using cached dnspython-2.7.0-py3-none-any.whl.metadata (5.8 kB)
+Collecting greenlet>=1.0 (from eventlet)
+  Downloading greenlet-3.2.1-cp312-cp312-macosx_11_0_universal2.whl.metadata (4.1 kB)
+Downloading eventlet-0.39.1-py3-none-any.whl (363 kB)
+Using cached dnspython-2.7.0-py3-none-any.whl (313 kB)
+Downloading greenlet-3.2.1-cp312-cp312-macosx_11_0_universal2.whl (270 kB)
+Installing collected packages: greenlet, dnspython, eventlet
+  Attempting uninstall: greenlet
+    Found existing installation: greenlet 3.1.1
+    Uninstalling greenlet-3.1.1:
+      Successfully uninstalled greenlet-3.1.1
+  Attempting uninstall: dnspython
+    Found existing installation: dnspython 2.7.0
+    Uninstalling dnspython-2.7.0:
+      Successfully uninstalled dnspython-2.7.0
+  Attempting uninstall: eventlet
+    Found existing installation: eventlet 0.33.3
+    Uninstalling eventlet-0.33.3:
+      Successfully uninstalled eventlet-0.33.3
+
+Successfully installed dnspython-2.7.0 eventlet-0.39.1 greenlet-3.2.1

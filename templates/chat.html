@@ -1,0 +1,694 @@
+{% extends 'base.html' %}
+
+{% block title %}Chat - YouInsight{% endblock %}
+
+{% block body_class %}chat-page{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h4 class="mb-0">Search Videos</h4>
+            </div>
+            <div class="card-body">
+                <form id="search-form">
+                    <div class="mb-3">
+                        <label for="search-term" class="form-label">Search Term</label>
+                        <input type="text" class="form-control" id="search-term" placeholder="e.g., Visiting Bali">
+                    </div>
+
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-search me-2"></i>Search
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h4 class="mb-0">Single Video Analysis</h4>
+            </div>
+            <div class="card-body">
+                <form id="video-url-form">
+                    <div class="mb-3">
+                        <label for="video-url" class="form-label">YouTube Video URL</label>
+                        <input type="text" class="form-control" id="video-url"
+                            placeholder="https://youtube.com/watch?v=...">
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-film me-2"></i>Analyze Video
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card mb-4" id="videos-container" style="display: none;">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h4 class="mb-0">Search Results for <span id="current-search-query"></span></h4>
+                <button class="btn btn-sm btn-outline-primary" id="analyze-selected">Analyze Selected</button>
+            </div>
+            <div class="card-body">
+                <div id="videos-list" class="search-results-grid">
+                    <!-- Videos will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h4 class="mb-0">Chat with YouInsight</h4>
+            </div>
+            <div class="card-body chat-container" id="chat-container">
+                <button class="collapse-chat-btn" id="collapse-chat-btn" title="Expand chat">
+                    <i class="fas fa-expand-alt"></i>
+                </button>
+                <div class="chat-messages" id="chat-messages">
+                    <div class="message bot-message">
+                        <p>👋 Hello! I'm YouInsight, your YouTube analysis assistant. How can I help you today?</p>
+                        <p>You can:</p>
+                        <ul>
+                            <li>Search for videos on a topic (using the search form)</li>
+                            <li>Analyze a specific YouTube video (paste the URL)</li>
+                            <li>Ask me to analyze videos with a specific question or prompt</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="chat-input">
+                    <form id="prompt-form">
+                        <div class="input-group" style="flex-wrap: nowrap; align-items: flex-end;">
+                            <textarea class="form-control" id="prompt-input" 
+                                placeholder="Enter your analysis prompt..."
+                                rows="6" 
+                                style="resize: none; overflow-y: auto; min-height: 120px;"
+                            ></textarea>
+                            <button class="btn btn-primary" type="submit" id="send-prompt" style="height: 38px;">
+                                <i class="fas fa-paper-plane"></i>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        // Socket.io connection
+        const socket = io({ 
+            path: '/socket.io/',
+            transports: ['polling'], // Force long polling instead of WebSockets
+            upgrade: false // Prevent upgrading to WebSockets
+        });
+        const chatMessages = document.getElementById('chat-messages');
+        const chatContainer = document.getElementById('chat-container');
+        const collapseBtn = document.getElementById('collapse-chat-btn');
+        const promptForm = document.getElementById('prompt-form');
+        const promptInput = document.getElementById('prompt-input');
+        const searchForm = document.getElementById('search-form');
+        const searchTerm = document.getElementById('search-term');
+        const maxResults = document.getElementById('max-results');
+        const videosContainer = document.getElementById('videos-container');
+        const videosList = document.getElementById('videos-list');
+        const videoUrlForm = document.getElementById('video-url-form');
+        const videoUrl = document.getElementById('video-url');
+        const analyzeSelectedBtn = document.getElementById('analyze-selected');
+        
+        // Conversation tracking
+        let currentConversationId = null;
+
+        // Chat expansion state
+        let chatExpanded = false;
+
+        let selectedVideos = [];
+        let currentSearchTerm = '';
+        let analysisInProgress = false;
+        
+        // Check if there's a conversation_id in the URL parameters
+        function getUrlParameter(name) {
+            name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
+            var regex = new RegExp('[\\?&]' + name + '=([^&#]*)');
+            var results = regex.exec(location.search);
+            return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
+        }
+        
+        // If we have a conversation_id in the URL, load that conversation
+        const urlConversationId = getUrlParameter('conversation_id');
+        if (urlConversationId) {
+            currentConversationId = urlConversationId;
+            loadConversation(urlConversationId);
+        }
+
+        // Socket events
+        socket.on('connect', function () {
+            console.log('Connected to server');
+        });
+
+        socket.on('disconnect', function () {
+            console.log('Disconnected from server');
+            addBotMessage('Disconnected from server. Please refresh the page.');
+        });
+
+        socket.on('status', function (data) {
+            console.log('Status:', data.message);
+        });
+
+        socket.on('search_results', function (data) {
+            console.log('Search results received:', data);
+            // Remove any loading spinners that might be present
+            removeLoadingSpinners();
+            // Display the search results
+            displaySearchResults(data.videos);
+        });
+        
+        socket.on('error', function (data) {
+            console.error('Error:', data.message);
+            analysisInProgress = false;
+            
+            // Remove any existing loading spinners
+            removeLoadingSpinners();
+            
+            // Add the error message
+            addBotMessage('Error: ' + data.message);
+        });
+        
+        // Socket event handlers for analysis
+
+        socket.on('analysis_started', function (data) {
+            console.log('Analysis started:', data.message);
+            analysisInProgress = true;
+            // Reset the current markdown content for new analysis
+            currentMarkdownContent = '';
+            // Trigger expansion right at the start of analysis
+            expandChatContainer();
+        });
+
+        socket.on('analysis_chunk', function (data) {
+            // Just append the chunk - expansion is handled by analysis_started
+            appendAnalysisChunk(data.chunk);
+        });
+
+        /**
+         * Handle analysis completion
+         * Updates UI and removes loading indicators
+         */
+        socket.on('analysis_complete', function (data) {
+            console.log('Analysis complete, ID:', data.analysis_id);
+            analysisInProgress = false;
+            
+            // Save the conversation ID
+            if (data.conversation_id) {
+                currentConversationId = data.conversation_id;
+                console.log('Conversation ID:', currentConversationId);
+            }
+            
+            // Remove any loading spinners
+            removeLoadingSpinners();
+            
+            // Add history button
+            addBotMessage('<p class="mt-3"><a href="/history" class="btn btn-sm btn-outline-primary">View in History</a></p>', true);
+        });
+
+        // Function to expand the chat container
+        function expandChatContainer() {
+            if (!chatExpanded) {
+                chatContainer.classList.add('expanded');
+                // Change the icon to a compress icon
+                collapseBtn.innerHTML = '<i class="fas fa-compress-alt"></i>';
+                collapseBtn.title = 'Collapse chat';
+                chatExpanded = true;
+                // Ensure messages are scrolled into view
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+        }
+
+        // Function to collapse the chat container
+        function collapseChatContainer() {
+            if (chatExpanded) {
+                chatContainer.classList.remove('expanded');
+                // Change the icon to an expand icon
+                collapseBtn.innerHTML = '<i class="fas fa-expand-alt"></i>';
+                collapseBtn.title = 'Expand chat';
+                chatExpanded = false;
+            }
+        }
+
+        // Event listener for toggle button (expand/collapse)
+        collapseBtn.addEventListener('click', function () {
+            // Toggle between expanded and collapsed states
+            if (chatExpanded) {
+                collapseChatContainer();
+            } else {
+                expandChatContainer();
+            }
+        });
+
+
+
+        // Add event listener to handle Enter key press
+        promptInput.addEventListener('keydown', function(e) {
+            // Check if Enter key is pressed
+            if (e.key === 'Enter') {
+                // If Shift key is also pressed, allow default behavior (line break)
+                if (e.shiftKey) {
+                    return; // Let the default line break behavior happen
+                } else {
+                    // Prevent default Enter behavior (which would add a line break)
+                    e.preventDefault();
+                    
+                    // Submit the form if the input is not empty
+                    const promptText = promptInput.value.trim();
+                    if (promptText) {
+                        // Programmatically submit the form
+                        promptForm.dispatchEvent(new Event('submit'));
+                    }
+                }
+            }
+        });
+
+        // Form submissions
+        promptForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            const promptText = promptInput.value.trim();
+            if (!promptText) return;
+
+            // Add user message to chat
+            addUserMessage(promptText);
+            promptInput.value = '';
+            
+            // Determine if this is a new conversation or continuing existing one
+            const isNewConversation = !currentConversationId;
+
+            // Search for selected videos or use single URL
+            if (selectedVideos.length > 0) {
+                analyzeVideos(promptText, selectedVideos, currentConversationId, isNewConversation);
+            } else {
+                // Check if there's a URL in the prompt
+                const urlMatch = promptText.match(/https?:\/\/(?:www\.)?youtube\.com\/watch\?v=[\w-]+|https?:\/\/youtu\.be\/[\w-]+/);
+                if (urlMatch) {
+                    // Extract URL and analyze single video
+                    const videoUrl = urlMatch[0];
+                    analyzeVideos(promptText, [{ single_video_url: videoUrl }], currentConversationId, isNewConversation);
+                } else {
+                    // No videos selected and no URL, prompt user
+                    addBotMessage('Please either:<br>1. Search for videos using the search form<br>2. Paste a YouTube video URL in your prompt<br>3. Type your query after selecting videos from search results');
+                }
+            }
+        });
+
+        searchForm.addEventListener('submit', function (e) {
+            console.log('Search form submission event triggered.');
+            e.preventDefault();
+            console.log('Default form submission prevented.');
+
+            if (!searchTerm) {
+                console.error('Search term input element not found. Aborting search.');
+                return;
+            }
+
+            const term = searchTerm.value.trim();
+            console.log('Search Details: Term = "' + term + '"');
+
+            if (!term) {
+                console.log('Search term is empty. Aborting search.');
+                return;
+            }
+
+            addUserMessage(`Search for: "${term}"`);
+            addBotMessage(`Searching for "${term}"...`);
+
+            currentSearchTerm = term;
+            // Find the currentSearchQuerySpan if it exists
+            const currentSearchQuerySpan = document.getElementById('current-search-query');
+            if (currentSearchQuerySpan) {
+                currentSearchQuerySpan.textContent = term; // Update search query in heading
+            }
+            
+            selectedVideos = [];
+            
+            // Show loading indicator and container
+            videosContainer.style.display = 'block';
+            videosList.innerHTML = '<p class="p-3 text-center"><i class="fas fa-spinner fa-spin"></i> Searching YouTube...</p>';
+            
+            console.log('Proceeding with search. Emitting socket.io event for search_videos...');
+            
+            // Use Socket.IO to emit the search event
+            socket.emit('search_videos', {
+                query: term
+            });
+        });
+
+        videoUrlForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            const url = videoUrl.value.trim();
+
+            if (!url) return;
+            if (!isValidYouTubeUrl(url)) {
+                addBotMessage("Please enter a valid YouTube URL.");
+                return;
+            }
+
+            addUserMessage(`Analyze video: ${url}`);
+            addBotMessage("Please enter your analysis prompt below.");
+
+            // Clear previous selections
+            selectedVideos = [];
+            currentSearchTerm = '';
+            clearSearchResults();
+
+            // Set the single video for analysis
+            selectedVideos.push({ single_video_url: url });
+        });
+
+        analyzeSelectedBtn.addEventListener('click', function () {
+            if (selectedVideos.length === 0) {
+                addBotMessage("Please select at least one video to analyze.");
+                return;
+            }
+            
+            console.log('Selected videos for analysis:', selectedVideos);
+            addBotMessage("Please enter your analysis prompt below.");
+            
+            // Focus the prompt input to make it easier for users
+            promptInput.focus();
+        });
+
+        // Helper functions for messages
+        
+        // Helper functions
+        function addUserMessage(message) {
+            const messageEl = document.createElement('div');
+            messageEl.className = 'message user-message';
+            messageEl.innerHTML = `<p>${escapeHtml(message)}</p>`;
+            chatMessages.appendChild(messageEl);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function addBotMessage(message, append = false) {
+            if (append && chatMessages.lastElementChild && chatMessages.lastElementChild.classList.contains('bot-message')) {
+                // When appending, we need to make sure we're handling the content correctly
+                chatMessages.lastElementChild.innerHTML += marked.parse(message);
+            } else {
+                const messageEl = document.createElement('div');
+                messageEl.className = 'message bot-message';
+                // Parse markdown content to render bullet points, formatting, etc.
+                messageEl.innerHTML = marked.parse(message);
+                chatMessages.appendChild(messageEl);
+            }
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // Keep track of raw markdown content for streaming responses
+        let currentMarkdownContent = '';
+        let typingSpeed = 5; // Milliseconds between characters (adjusted for faster typing)
+        let typingTimeout = null;
+        let typingQueue = [];
+        let isTyping = false;
+
+        // Process the typing queue
+        function processTypingQueue() {
+            if (typingQueue.length === 0) {
+                isTyping = false;
+                return;
+            }
+
+            isTyping = true;
+            const nextChar = typingQueue.shift();
+            
+            // Get the last message element
+            const lastMessage = chatMessages.lastElementChild;
+            if (lastMessage && lastMessage.classList.contains('bot-message')) {
+                // Apply typing effect by updating the HTML with the next character
+                lastMessage.innerHTML = marked.parse(currentMarkdownContent.substring(0, currentMarkdownContent.length - typingQueue.length));
+                
+                // Auto-scroll to keep up with typing
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+                
+                // Schedule the next character
+                typingTimeout = setTimeout(processTypingQueue, typingSpeed);
+            } else {
+                // Something went wrong, just display everything
+                isTyping = false;
+                lastMessage.innerHTML = marked.parse(currentMarkdownContent);
+            }
+        }
+
+        function appendAnalysisChunk(chunk) {
+            // Split the chunk into individual characters and add to the queue
+            const characters = chunk.split('');
+            
+            if (chatMessages.lastElementChild && chatMessages.lastElementChild.classList.contains('bot-message')) {
+                // Add the new chunk to our stored raw markdown
+                currentMarkdownContent += chunk;
+                
+                // Add characters to the typing queue
+                typingQueue = typingQueue.concat(characters);
+                
+                // If not already processing the queue, start the typing effect
+                if (!isTyping) {
+                    processTypingQueue();
+                }
+            } else {
+                // First chunk - start storing the raw markdown
+                currentMarkdownContent = chunk;
+                
+                // Create a new message element
+                addBotMessage(''); // Start with empty content
+                
+                // Add characters to typing queue
+                typingQueue = characters;
+                
+                // Start the typing effect
+                processTypingQueue();
+            }
+        }
+
+        function displaySearchResults(videos) {
+            // Simple debug logging
+            console.log('Raw search results:', videos);
+            
+            // Clear existing results
+            videosList.innerHTML = '';
+            
+            // Validate input
+            if (!videos || videos.length === 0) {
+                videosList.innerHTML = '<p class="p-3 text-center">No videos found</p>';
+                // videosContainer visibility and currentSearchQuerySpan are handled by the submit event listener
+                return;
+            }
+            
+            // Process each video
+            for (let i = 0; i < videos.length; i++) {
+                const video = videos[i];
+                
+                // Skip invalid videos
+                if (!video || !video.video_id) {
+                    console.warn('Invalid video data at index', i, video);
+                    continue;
+                }
+                
+                try {
+                    // Create video element
+                    const videoEl = document.createElement('div');
+                    videoEl.className = 'list-group-item';
+                    
+                    // Use safe values with defaults for missing properties
+                    const videoId = video.video_id || '';
+                    const thumbnail = video.thumbnail_url || video.thumbnail || ''; // Try both property names with fallback
+                    const title = video.title || 'Untitled Video';
+                    const channelTitle = video.channel_title || 'Unknown Channel';
+                    const viewCount = video.view_count || 0;
+                    
+                    // Create HTML content safely
+                    videoEl.innerHTML = `
+                        <div class="form-check w-100">
+                            <div class="d-flex align-items-start">
+                                <input class="form-check-input video-checkbox me-2 mt-2" type="checkbox" value="${videoId}" id="video-${i}">
+                                <div class="video-content w-100">
+                                    <img src="${thumbnail}" class="video-thumbnail w-100" style="max-height: 200px; object-fit: cover;" alt="${escapeHtml(title)}">
+                                    <div class="mt-2">
+                                        <strong>${escapeHtml(title)}</strong><br>
+                                        <small>${escapeHtml(channelTitle)}</small><br>
+                                        <small>${formatViews(viewCount)} views</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    // Add to the list
+                    videosList.appendChild(videoEl);
+                } catch (err) {
+                    console.error('Error creating video element:', err);
+                }
+            }
+
+            // videosContainer visibility and currentSearchQuerySpan are handled by the submit event listener
+            addBotMessage(`Found ${videos.length} videos for "${currentSearchTerm}". Select videos to analyze and enter your analysis prompt.`);
+
+            // Clear any previous selections
+            selectedVideos = [];
+            
+            // Add event listeners to checkboxes
+            document.querySelectorAll('.video-checkbox').forEach((checkbox, index) => {
+                checkbox.addEventListener('change', function () {
+                    if (this.checked) {
+                        selectedVideos.push(videos[index].video_id);
+                        console.log('Added video to selection:', videos[index].video_id);
+                    } else {
+                        const idx = selectedVideos.indexOf(videos[index].video_id);
+                        if (idx !== -1) {
+                            selectedVideos.splice(idx, 1);
+                            console.log('Removed video from selection:', videos[index].video_id);
+                        }
+                    }
+                    console.log('Current selected videos:', selectedVideos);
+                });
+            });
+        }
+
+        function clearSearchResults() {
+            videosList.innerHTML = '';
+            videosContainer.style.display = 'none';
+        }
+
+        function analyzeVideos(prompt, videos, conversationId = null, isNewConversation = false) {
+            if (analysisInProgress) {
+                addBotMessage("An analysis is already in progress. Please wait for it to complete.");
+                return;
+            }
+            
+            // Reset markdown content when starting a new analysis
+            currentMarkdownContent = '';
+            addBotMessage(`<p>Analyzing videos with the prompt: "${escapeHtml(prompt)}"</p><div class="loading-spinner"></div>`);
+
+            if (videos[0] && videos[0].single_video_url) {
+                // Single video analysis
+                socket.emit('analyze_videos', {
+                    video_url: videos[0].single_video_url,
+                    prompt: prompt,
+                    conversation_id: conversationId,
+                    is_new_conversation: isNewConversation
+                });
+            } else {
+                // Multiple videos analysis
+                socket.emit('analyze_videos', {
+                    search_term: currentSearchTerm,
+                    video_ids: videos,
+                    prompt: prompt,
+                    conversation_id: conversationId,
+                    is_new_conversation: isNewConversation
+                });
+            }
+        }
+
+        function isValidYouTubeUrl(url) {
+            const pattern = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+$/;
+            return pattern.test(url);
+        }
+
+        function escapeHtml(unsafe) {
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function formatViews(views) {
+            if (views >= 1000000) {
+                return Math.floor(views / 1000000) + 'M';
+            } else if (views >= 1000) {
+                return Math.floor(views / 1000) + 'K';
+            } else {
+                return views;
+            }
+        }
+        
+        // Function to load conversation history
+        function loadConversation(conversationId) {
+            // Clear current chat messages and show loading indicator
+            chatMessages.innerHTML = '';
+            addBotMessage('<p>Loading conversation history...</p><div class="loading-spinner"></div>');
+            
+            // Make API request to get conversation data
+            fetch(`/api/conversation/${conversationId}`, {
+                credentials: 'same-origin'
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to load conversation');
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Clear loading message
+                chatMessages.innerHTML = '';
+                
+                // Add conversation messages
+                if (data.messages && data.messages.length > 0) {
+                    data.messages.forEach(message => {
+                        if (message.role === 'user') {
+                            addUserMessage(message.content);
+                        } else if (message.role === 'assistant') {
+                            // Add without appending since we're reconstructing the whole conversation
+                            addBotMessage(message.content, false);
+                        }
+                    });
+                } else {
+                    // If no messages found
+                    addBotMessage('No conversation history found. Starting a new conversation.');
+                }
+                
+                // Add the video(s) to the selected videos list
+                selectedVideos = [];
+                if (data.videos && data.videos.length > 0) {
+                    data.videos.forEach(video => {
+                        if (video.single_video_url) {
+                            // For single video analysis
+                            selectedVideos.push({ single_video_url: video.url });
+                            // Optionally, show the video URL in the input field
+                            if (videoUrl) {
+                                videoUrl.value = video.url;
+                            }
+                        } else {
+                            // For multi-video analysis
+                            selectedVideos.push(video.video_id);
+                        }
+                    });
+                }
+                
+                // Scroll to bottom of chat to see latest messages
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            })
+            .catch(error => {
+                console.error('Error loading conversation:', error);
+                chatMessages.innerHTML = '';
+                addBotMessage('Error loading conversation history: ' + error.message);
+            });
+        }
+        
+        /**
+         * Removes all loading spinner elements from the chat messages
+         * Used when an error occurs or analysis completes
+         */
+        function removeLoadingSpinners() {
+            // Find and remove any loading spinners in the chat
+            const spinners = chatMessages.querySelectorAll('.loading-spinner');
+            spinners.forEach(spinner => {
+                spinner.remove();
+            });
+        }
+    });
+</script>
+{% endblock %}

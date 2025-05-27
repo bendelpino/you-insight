@@ -1,0 +1,98 @@
+/* static/css/style.css */
+
+/* Search Results Grid */
+.search-results-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1rem 0;
+    /* Add some padding around the container */
+    width: 100%;
+}
+
+/* Individual Video Preview Box */
+.video-preview-box {
+    background-color: #f8f9fa;
+    /* Light background */
+    border: 1px solid #dee2e6;
+    /* Subtle border */
+    border-radius: 0.375rem;
+    /* Bootstrap's default rounded corners */
+    padding: 0.75rem;
+    cursor: pointer;
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    /* Center content horizontally */
+    text-align: center;
+    /* Center text */
+    overflow: hidden;
+    /* Prevent content from spilling */
+}
+
+.video-preview-box:hover {
+    transform: translateY(-5px);
+    /* Slight lift on hover */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    /* Soft shadow on hover */
+}
+
+.video-preview-box.selected {
+    border-color: #0d6efd;
+    /* Primary color border when selected */
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+    /* Focus ring style */
+    background-color: #e7f1ff;
+    /* Lighter blue for selected */
+}
+
+.video-preview-box .video-thumbnail {
+    width: 100%;
+    max-width: 180px;
+    /* Control max thumbnail size */
+    height: auto;
+    border-radius: 0.25rem;
+    /* Rounded corners for thumbnail */
+    margin-bottom: 0.5rem;
+    object-fit: cover;
+    /* Ensure thumbnails cover their area well */
+}
+
+.video-preview-box .video-info {
+    width: 100%;
+}
+
+.video-preview-box .video-title {
+    font-weight: bold;
+    font-size: 0.9rem;
+    margin-bottom: 0.25rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    /* Add ellipsis for long titles */
+    max-width: 100%;
+    /* Ensure it doesn't overflow its container */
+}
+
+.video-preview-box .video-channel {
+    font-size: 0.8rem;
+    color: #6c757d;
+    /* Muted color for channel title */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+/* Loading spinner for search results area (if needed separate from chat) */
+.loading-spinner-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 150px;
+    /* Give it some space */
+}
+
+/* No responsive grid adjustments needed for vertical layout */
