@@ -33,6 +33,7 @@ A Flask-based web application that allows users to analyze YouTube videos using 
    ```
 
    You can generate a secure Flask secret key by running the `generate_secret_key.py` script from the command line:
+
    ```
    python generate_secret_key.py
    ```
@@ -46,15 +47,6 @@ A Flask-based web application that allows users to analyze YouTube videos using 
 2. Open your browser and navigate to `http://localhost:5000`
 3. Register an account, providing your own Gemini API key
 4. Start interacting with the chatbot
-
-## Deployment
-
-This application can be deployed on platforms like:
-
-- Heroku
-- Render
-- PythonAnywhere
-- Any platform supporting Python web applications
 
 ## License
 
