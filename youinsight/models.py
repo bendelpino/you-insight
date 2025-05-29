@@ -1,6 +1,8 @@
 from flask_login import UserMixin
 from datetime import datetime, timedelta
 import secrets
+import json
+from sqlalchemy.dialects.postgresql import JSONB
 from . import db
 
 class User(UserMixin, db.Model):
@@ -43,6 +45,8 @@ class Video(db.Model):
     url = db.Column(db.String(200), nullable=False)
     view_count = db.Column(db.Integer, nullable=True)
     transcript = db.Column(db.Text, nullable=True)
+    # Store complete YouTube API response as JSONB for efficient querying
+    api_response = db.Column(JSONB, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     analyses = db.relationship('AnalysisVideo', backref='video', lazy=True)
     
@@ -50,7 +54,7 @@ class Video(db.Model):
         return f'<Video {self.title}>'
     
     def to_dict(self):
-        return {
+        data = {
             'id': self.id,
             'video_id': self.video_id,
             'title': self.title,
@@ -58,19 +62,28 @@ class Video(db.Model):
             'view_count': self.view_count,
             'created_at': self.created_at.isoformat()
         }
+        
+        # Include API response if available
+        if self.api_response:
+            data['api_response'] = self.api_response
+            
+        return data
 
 class Analysis(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     search_term = db.Column(db.String(100), nullable=True)
     prompt = db.Column(db.Text, nullable=False)
-    result = db.Column(db.Text, nullable=True)
+    # Store Gemini API result as JSONB for more efficient querying in PostgreSQL
+    result = db.Column(db.Text, nullable=True)  # Keep as Text for backward compatibility
+    result_json = db.Column(JSONB, nullable=True)  # For structured results
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     videos = db.relationship('AnalysisVideo', backref='analysis', lazy=True)
     # Conversation tracking
     conversation_id = db.Column(db.String(100), nullable=True)
     is_conversation = db.Column(db.Boolean, default=False)
-    messages = db.Column(db.Text, nullable=True)  # JSON string of conversation messages
+    # Store messages as JSONB instead of Text for better JSON handling
+    messages = db.Column(JSONB, nullable=True)  # JSON of conversation messages
     
     def __repr__(self):
         return f'<Analysis {self.id}>'
@@ -88,13 +101,14 @@ class Analysis(db.Model):
             'conversation_id': self.conversation_id
         }
         
+        # Add structured result if available
+        if self.result_json:
+            data['result_json'] = self.result_json
+        
         # Add messages if this is a conversation
+        # With PostgreSQL JSONB, we don't need to parse the JSON string
         if self.is_conversation and self.messages:
-            import json
-            try:
-                data['messages'] = json.loads(self.messages)
-            except:
-                data['messages'] = []
+            data['messages'] = self.messages
                 
         return data
 

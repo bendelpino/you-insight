@@ -14,3 +14,8 @@ python-socketio==5.10.0
 Flask-Caching==2.1.0
 Flask-WTF==1.2.1
 email-validator==2.1.0.post1
+
+# PostgreSQL dependencies
+psycopg2-binary==2.9.9
+pandas==2.1.1
+SQLAlchemy-Utils==0.41.1
