@@ -13,6 +13,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 import os
 import time
+import uuid
 from .email_service import send_reset_email
 
 from . import db, login_manager
@@ -95,12 +96,13 @@ def register():
             flash("Username already taken", "danger")
             return redirect(url_for("main.register"))
 
-        # Create new user
+        # Create new user with UUID for Supabase RLS
         user = User(
             email=email,
             username=username,
             password_hash=generate_password_hash(password),
             gemini_api_key=gemini_api_key,
+            user_id=str(uuid.uuid4()),  # Generate a UUID for Supabase RLS
         )
         db.session.add(user)
         db.session.commit()
