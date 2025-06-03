@@ -7,11 +7,10 @@ from . import db
 
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.String(36), unique=True, nullable=True)  # Existing column used for RLS in Supabase
-    supabase_id = db.Column(db.String(36), unique=True, nullable=True)  # Additional identifier if needed
+    user_id = db.Column(db.String(36), unique=True, nullable=True)  # Used for Supabase RLS
     email = db.Column(db.String(120), unique=True, nullable=False)
     username = db.Column(db.String(80), unique=True, nullable=False)
-    password_hash = db.Column(db.String(128), nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)  # Increased from 128 to 255 for scrypt hashes
     gemini_api_key = db.Column(db.String(100), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     reset_token = db.Column(db.String(100), nullable=True)
